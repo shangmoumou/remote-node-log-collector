@@ -1,0 +1,13 @@
+# Local connection settings and host trust records must not be published.
+machines.json
+known_hosts
+logs/
+
+# Installed dependencies and generated packages are rebuilt locally.
+.dependencies/
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.spec
+.venv/
