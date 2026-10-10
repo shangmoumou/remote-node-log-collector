@@ -1,9 +1,26 @@
 import unittest
+import tempfile
+from pathlib import Path
 from datetime import datetime
-from log_downloader import select_log, select_logs
+from log_downloader import select_log, select_logs, prepare_config_directory
 
 
 class SelectionTests(unittest.TestCase):
+    def test_config_migration(self):
+        """Move legacy settings without overwriting existing user settings."""
+        with tempfile.TemporaryDirectory() as temporary:
+            legacy = Path(temporary) / 'app'
+            directory = Path(temporary) / 'user'
+            legacy.mkdir()
+            (legacy / 'machines.json').write_text('{}')
+            prepare_config_directory(directory, legacy)
+            self.assertTrue((directory / 'machines.json').exists())
+            self.assertFalse((legacy / 'machines.json').exists())
+            (legacy / 'machines.json').write_text('{"old":1}')
+            prepare_config_directory(directory, legacy)
+            self.assertEqual((directory / 'machines.json').read_text(), '{}')
+            self.assertTrue((legacy / 'machines.json').exists())
+
     def test_time_intervals(self):
         names = ['tasks_manager_info_20260922-092747.4060',
                  'tasks_manager_info_20260922-103000.4061', 'tasks_manager.INFO']

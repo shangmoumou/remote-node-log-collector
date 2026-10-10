@@ -10,16 +10,29 @@ import stat
 import threading
 import sys
 import base64
+import shutil
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-# Frozen executables store persistent configuration beside the EXE, outside its temporary bundle.
+# Keep the old application location only for migrating previous configurations.
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
+CONFIG_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData' / 'Local'))) / 'RemoteNodeLogCollector'
 REMOTE = '/home/aoting/user_config/glogs'
 STAMP = re.compile(r'_info_(\d{8}-\d{6})(?:\.|$)', re.I)
 ANY_STAMP = re.compile(r'_(\d{8}-\d{6})(?:\.|$)', re.I)
 LEVEL_SUFFIX = re.compile(r'\.(INFO|WARNING|ERROR)$', re.I)
+
+
+def prepare_config_directory(directory=CONFIG_DIR, legacy=ROOT):
+    """Create per-user storage and move old settings only if no new copy exists."""
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in ('machines.json', 'known_hosts'):
+        source = legacy / name
+        destination = directory / name
+        if source.is_file() and not destination.exists():
+            # Move rather than copy so successful migration leaves no passwords beside the EXE.
+            shutil.move(str(source), str(destination))
 
 
 def crypt_password(data, decrypt=False):
@@ -124,9 +137,9 @@ def load_sessions():
                 break
             except (UnicodeError, LookupError, configparser.Error, KeyError):
                 continue
-    if (ROOT / 'machines.json').exists():
+    if (CONFIG_DIR / 'machines.json').exists():
         # Saved passwords are DPAPI ciphertext, never plaintext.
-        sessions.update(json.loads((ROOT / 'machines.json').read_text('utf-8')))
+        sessions.update(json.loads((CONFIG_DIR / 'machines.json').read_text('utf-8')))
     return sessions
 
 
@@ -228,7 +241,7 @@ class App:
         if not name or not self.fields['host'].get().strip():
             messagebox.showerror('无法保存', '请填写机器名称和地址')
             return
-        file = ROOT / 'machines.json'
+        file = CONFIG_DIR / 'machines.json'
         saved = json.loads(file.read_text('utf-8')) if file.exists() else {}
         saved[name] = {key: self.fields[key].get().strip() for key in ('host', 'port', 'user')}
         try:
@@ -266,7 +279,7 @@ class App:
             import paramiko
             client = paramiko.SSHClient()
             client.load_system_host_keys()  # Load previously trusted OpenSSH host keys.
-            known = ROOT / 'known_hosts'
+            known = CONFIG_DIR / 'known_hosts'
             if known.exists():
                 client.load_host_keys(str(known))  # Reject changed keys for machines used before.
             class ConfirmHost(paramiko.MissingHostKeyPolicy):
@@ -353,6 +366,7 @@ class App:
 
 
 if __name__ == '__main__':
+    prepare_config_directory()  # Create user storage and migrate old machine settings before loading them.
     window = tk.Tk()
     App(window)  # Initialize the machine selector and download controls.
     window.mainloop()
